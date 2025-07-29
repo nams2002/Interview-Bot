@@ -1482,15 +1482,18 @@ api_key = "your-openai-api-key-here"
                 st.session_state.eden_providers = provider_string
                 
                 # Store thresholds if we have an interviewer
-                if hasattr(st.session_state, 'interviewer') and hasattr(st.session_state.interviewer, 'ai_detector'):
+                if (hasattr(st.session_state, 'interviewer') and
+                    st.session_state.interviewer is not None and
+                    hasattr(st.session_state.interviewer, 'ai_detector')):
                     st.session_state.interviewer.ai_detector.confidence_thresholds['ai_score'] = ai_threshold
             else:
                 st.warning("Without Eden AI integration, the system will use basic built-in detection which is less accurate.")
-            
-            # Store the setting in session state
+
             # Store the setting in session state
             st.session_state.eden_api_key = eden_api_key
-            if eden_api_key and hasattr(st.session_state, 'interviewer'):
+            if (eden_api_key and
+                hasattr(st.session_state, 'interviewer') and
+                st.session_state.interviewer is not None):
                 st.session_state.interviewer.ai_detector.set_api_key(eden_api_key)
         
         # Store the AI detection settings in session state
@@ -1849,21 +1852,22 @@ api_key = "your-openai-api-key-here"
         
         # Continue button
         if st.button("Continue ➡️", key="next"):
-            stages = list(st.session_state.interviewer.stages.keys())
-            current_stage_index = stages.index(st.session_state.interview_stage)
-            
-            if len(st.session_state.responses) % 3 == 0 and current_stage_index < len(stages) - 1:
-                st.session_state.interview_stage = stages[current_stage_index + 1]
-                transition = random.choice(st.session_state.interviewer.transitions)
-                st.write(transition)
-                # Speak the transition
-                threading.Thread(
-                    target=st.session_state.interviewer.security_monitor.speak_text,
-                    args=(transition,)
-                ).start()
-            
-            st.session_state.current_question = None
-            st.rerun()
+            if st.session_state.interviewer is not None:
+                stages = list(st.session_state.interviewer.stages.keys())
+                current_stage_index = stages.index(st.session_state.interview_stage)
+
+                if len(st.session_state.responses) % 3 == 0 and current_stage_index < len(stages) - 1:
+                    st.session_state.interview_stage = stages[current_stage_index + 1]
+                    transition = random.choice(st.session_state.interviewer.transitions)
+                    st.write(transition)
+                    # Speak the transition
+                    threading.Thread(
+                        target=st.session_state.interviewer.security_monitor.speak_text,
+                        args=(transition,)
+                    ).start()
+
+                st.session_state.current_question = None
+                st.rerun()
 
     # Camera feed and monitoring column
     with col2:
@@ -1879,7 +1883,7 @@ api_key = "your-openai-api-key-here"
             try:
                 while st.session_state.running and st.session_state.cap is not None:
                     ret, frame = st.session_state.cap.read()
-                    if ret:
+                    if ret and st.session_state.interviewer is not None:
                         warning, warning_type = st.session_state.interviewer.monitor_interview_environment(frame)
                         
                         # Draw alignment guides
