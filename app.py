@@ -462,7 +462,15 @@ class AITextDetector:
 class SecurityMonitor:
     def __init__(self):
         self.face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
-        mixer.init()
+
+        # Initialize mixer with error handling for cloud environments
+        self.audio_available = True
+        try:
+            mixer.init()
+        except Exception as e:
+            print(f"Audio initialization failed: {e}")
+            self.audio_available = False
+
         self.last_warning_time = 0
         self.warning_cooldown = 5
         self.mp_face_mesh = mp.solutions.face_mesh
@@ -475,21 +483,25 @@ class SecurityMonitor:
 
     def speak_text(self, text):
         """Convert text to speech and play it"""
+        if not self.audio_available:
+            print(f"Audio not available, would speak: {text}")
+            return
+
         try:
             with self.tts_lock:
                 tts = gTTS(text=text, lang='en')
                 audio_file = f"speech_{int(time.time())}.mp3"
                 tts.save(audio_file)
-                
+
                 while mixer.music.get_busy():
                     time.sleep(0.1)
-                
+
                 mixer.music.load(audio_file)
                 mixer.music.play()
-                
+
                 while mixer.music.get_busy():
                     time.sleep(0.1)
-                
+
                 try:
                     os.remove(audio_file)
                 except:
@@ -1319,8 +1331,9 @@ def convert_to_serializable(obj):
 def cleanup_resources():
     """Clean up system resources"""
     try:
-        mixer.music.stop()
-        mixer.quit()
+        if mixer.get_init():
+            mixer.music.stop()
+            mixer.quit()
     except:
         pass
     
