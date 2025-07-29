@@ -473,12 +473,21 @@ class SecurityMonitor:
 
         self.last_warning_time = 0
         self.warning_cooldown = 5
-        self.mp_face_mesh = mp.solutions.face_mesh
-        self.face_mesh = self.mp_face_mesh.FaceMesh(
-            max_num_faces=1,
-            min_detection_confidence=0.5,
-            min_tracking_confidence=0.5
-        )
+
+        # Initialize MediaPipe with error handling
+        try:
+            self.mp_face_mesh = mp.solutions.face_mesh
+            self.face_mesh = self.mp_face_mesh.FaceMesh(
+                max_num_faces=1,
+                min_detection_confidence=0.5,
+                min_tracking_confidence=0.5
+            )
+            self.mediapipe_available = True
+        except Exception as e:
+            print(f"MediaPipe initialization failed: {e}")
+            self.mp_face_mesh = None
+            self.face_mesh = None
+            self.mediapipe_available = False
         self.tts_lock = threading.Lock()
 
     def speak_text(self, text):
@@ -511,28 +520,38 @@ class SecurityMonitor:
 
     def check_face_alignment(self, frame):
         """Check if face is properly aligned using MediaPipe Face Mesh"""
-        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        results = self.face_mesh.process(frame_rgb)
-        
-        if not results.multi_face_landmarks:
-            return False, "Please face the camera"
-            
-        face_landmarks = results.multi_face_landmarks[0]
-        nose_tip = face_landmarks.landmark[4]
-        image_height, image_width = frame.shape[:2]
-        nose_x = int(nose_tip.x * image_width)
-        
-        center_x = image_width // 2
-        offset = abs(center_x - nose_x)
-        max_offset = image_width * 0.1
-        
-        if offset > max_offset:
-            return False, "Please center your face"
-            
-        return True, "Face properly aligned"
+        if not self.mediapipe_available or self.face_mesh is None:
+            return True, "Face alignment check not available"
+
+        try:
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            results = self.face_mesh.process(frame_rgb)
+
+            if not results.multi_face_landmarks:
+                return False, "Please face the camera"
+
+            face_landmarks = results.multi_face_landmarks[0]
+            nose_tip = face_landmarks.landmark[4]
+            image_height, image_width = frame.shape[:2]
+            nose_x = int(nose_tip.x * image_width)
+
+            center_x = image_width // 2
+            offset = abs(center_x - nose_x)
+            max_offset = image_width * 0.1
+
+            if offset > max_offset:
+                return False, "Please center your face"
+
+            return True, "Face properly aligned"
+        except Exception as e:
+            print(f"Face alignment check error: {e}")
+            return True, "Face alignment check failed"
 
     def detect_prohibited_objects(self, frame, yolo_model):
         """Detect prohibited objects in frame"""
+        if yolo_model is None:
+            return []  # Return empty list if YOLO model is not available
+
         prohibited_items = {
             'cell phone': 'Mobile phone detected',
             'laptop': 'Laptop detected',
@@ -542,19 +561,23 @@ class SecurityMonitor:
             'keyboard': 'External keyboard detected',
             'tv': 'Television detected'
         }
-        
-        results = yolo_model(frame)
-        warnings = []
-        
-        for r in results:
-            boxes = r.boxes
-            for box in boxes:
-                cls = int(box.cls[0])
-                name = yolo_model.names[cls]
-                if name in prohibited_items:
-                    warnings.append(prohibited_items[name])
-        
-        return warnings
+
+        try:
+            results = yolo_model(frame)
+            warnings = []
+
+            for r in results:
+                boxes = r.boxes
+                for box in boxes:
+                    cls = int(box.cls[0])
+                    name = yolo_model.names[cls]
+                    if name in prohibited_items:
+                        warnings.append(prohibited_items[name])
+
+            return warnings
+        except Exception as e:
+            print(f"Object detection error: {e}")
+            return []
 
     def issue_warning(self, warning_text):
         """Issue warning with cooldown"""
@@ -566,7 +589,16 @@ class AIInterviewer:
     def __init__(self, openai_key):
         self.security_monitor = SecurityMonitor()
         self.recognizer = sr.Recognizer()
-        self.yolo_model = YOLO('yolov8n.pt')
+
+        # Initialize YOLO model with error handling
+        try:
+            self.yolo_model = YOLO('yolov8n.pt')
+            self.yolo_available = True
+        except Exception as e:
+            print(f"YOLO model initialization failed: {e}")
+            self.yolo_model = None
+            self.yolo_available = False
+
         openai.api_key = openai_key
         
         # Add the enhanced AI detector
@@ -886,7 +918,7 @@ class AIInterviewer:
             })
             return face_message, "face_alignment"
         
-        object_warnings = self.security_monitor.detect_prohibited_objects(frame, self.yolo_model)
+        object_warnings = self.security_monitor.detect_prohibited_objects(frame, self.yolo_model if self.yolo_available else None)
         if object_warnings:
             warning_message = "Warning! " + ", ".join(object_warnings)
             self.security_monitor.issue_warning(warning_message)
@@ -1889,9 +1921,22 @@ api_key = "your-openai-api-key-here"
             video_feed = st.empty()
             warning_placeholder = st.empty()
             metrics_placeholder = st.empty()
-            
+
             if st.session_state.cap is None:
-                st.session_state.cap = cv2.VideoCapture(0)
+                try:
+                    st.session_state.cap = cv2.VideoCapture(0)
+                    # Test if camera is working
+                    ret, test_frame = st.session_state.cap.read()
+                    if not ret:
+                        st.warning("Camera not accessible. Interview will continue without video monitoring.")
+                        st.info("This is normal when running on cloud platforms like Streamlit Cloud.")
+                        st.session_state.cap = None
+                        camera_enabled = False  # Disable camera for this session
+                except Exception as e:
+                    st.warning(f"Camera initialization failed: {e}")
+                    st.info("Interview will continue without video monitoring. This is normal on cloud platforms.")
+                    st.session_state.cap = None
+                    camera_enabled = False  # Disable camera for this session
             
             try:
                 while st.session_state.running and st.session_state.cap is not None:
