@@ -1373,24 +1373,21 @@ def main():
     with st.sidebar:
         st.title("🎤 Interview Setup")
 
-        # API Key input with better UX
+        # Get OpenAI API key from secrets only
         try:
-            default_key = st.secrets.get("openai", {}).get("api_key", "")
-        except:
-            default_key = ""
-
-        openai_key = st.text_input(
-            "OpenAI API Key",
-            type="password",
-            value=default_key,
-            help="Enter your OpenAI API key. Get one from https://platform.openai.com/api-keys",
-            placeholder="sk-..."
-        )
-
-        if not openai_key:
-            st.error("⚠️ Please enter your OpenAI API key to continue")
-            st.info("💡 You can enter it in the field above or configure it in Streamlit secrets")
-            return
+            openai_key = st.secrets["openai"]["api_key"]
+        except KeyError:
+            st.error("⚠️ OpenAI API key not configured")
+            st.info("💡 Please configure your OpenAI API key in Streamlit secrets")
+            st.code("""
+# Add this to your Streamlit secrets:
+[openai]
+api_key = "your-openai-api-key-here"
+            """)
+            st.stop()
+        except Exception as e:
+            st.error(f"Error accessing secrets: {str(e)}")
+            st.stop()
 
         st.divider()
 
@@ -1418,16 +1415,24 @@ def main():
         audio_enabled = st.toggle("Enable Microphone", value=True)
         
         # Enhanced AI detection settings
-        ai_detection_enabled = st.toggle("Enable AI Response Detection", value=True, 
+        ai_detection_enabled = st.toggle("Enable AI Response Detection", value=True,
                                        help="Detect if responses might be AI-generated or plagiarized")
-        
+
         # Eden AI API integration with enhanced UI
         with st.expander("AI Detection Settings"):
             st.markdown("### Eden AI Integration")
             st.info("Eden AI combines multiple professional AI detection engines for more accurate results.")
-            
-            eden_api_key = st.text_input("Eden AI API Key", type="password",
-                                       help="Enter API key for Eden AI detection service")
+
+            # Get Eden AI key from secrets if available
+            try:
+                eden_api_key = st.secrets.get("eden_ai", {}).get("api_key", "")
+                if eden_api_key:
+                    st.success("✅ Eden AI configured via secrets")
+                else:
+                    st.warning("⚠️ Eden AI not configured - using built-in detection")
+            except:
+                eden_api_key = ""
+                st.warning("⚠️ Eden AI not configured - using built-in detection")
             
             # Which providers to use with better layout
             if eden_api_key:
