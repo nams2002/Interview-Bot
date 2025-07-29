@@ -1353,6 +1353,7 @@ def initialize_session_state():
         'ai_detection_enabled': True,
         'eden_api_key': "",
         'eden_providers': "sapling,writer,originalityai",
+        'interviewer': None,
         'performance_metrics': {
             'api_calls': 0,
             'cache_hits': 0,
@@ -1541,124 +1542,132 @@ api_key = "your-openai-api-key-here"
             else:
                 st.error("Please provide at least one response before ending the interview.")
         
-        # Display current stage information
-        current_stage = st.session_state.interviewer.stages[st.session_state.interview_stage]
-        st.write(f"**Current Stage:** {current_stage['name']}")
-        st.write(current_stage['description'])
-        
-        # Progress bar
-        progress = list(st.session_state.interviewer.stages.keys()).index(st.session_state.interview_stage) / \
-                  len(st.session_state.interviewer.stages)
-        st.progress(progress)
+        # Display current stage information (only if interviewer is initialized)
+        if st.session_state.interviewer is not None:
+            current_stage = st.session_state.interviewer.stages[st.session_state.interview_stage]
+            st.write(f"**Current Stage:** {current_stage['name']}")
+            st.write(current_stage['description'])
+
+            # Progress bar
+            progress = list(st.session_state.interviewer.stages.keys()).index(st.session_state.interview_stage) / \
+                      len(st.session_state.interviewer.stages)
+            st.progress(progress)
         
         # Timer
         elapsed_time = time.time() - st.session_state.start_time
         st.write(f"⏱️ Interview Duration: {int(elapsed_time // 60)}m {int(elapsed_time % 60)}s")
         
-        # Generate question if needed
-        if st.session_state.current_question is None:
+        # Generate question if needed (only if interviewer is initialized)
+        if st.session_state.current_question is None and st.session_state.interviewer is not None:
             st.session_state.current_question = st.session_state.interviewer.generate_next_question(
                 st.session_state.position,
                 st.session_state.interview_stage,
                 st.session_state.responses
             )
         
-        # Display current question
-        st.write("### Current Question:")
-        st.write(st.session_state.current_question)
+        # Only show interview interface if interviewer is initialized and we have a question
+        if st.session_state.interviewer is not None and st.session_state.current_question is not None:
+            # Display current question
+            st.write("### Current Question:")
+            st.write(st.session_state.current_question)
+
+            # Response interface
+            response_tab, feedback_tab = st.tabs(["Your Response", "Previous Feedback"])
+        elif st.session_state.interviewer is None:
+            st.info("Please enter a position above to start the interview.")
+            return
+        else:
+            st.info("Generating your first question...")
         
-        # Response interface
-        response_tab, feedback_tab = st.tabs(["Your Response", "Previous Feedback"])
-        
-        with response_tab:
-            # Audio recording interface
-            if audio_enabled:
-                if st.button("🎤 Record Response", key="record"):
-                    with st.spinner("🎙️ Recording... (Speaking now)"):
-                        with sr.Microphone() as source:
-                            try:
-                                audio = st.session_state.interviewer.recognizer.listen(source, timeout=15)
-                                response_text = st.session_state.interviewer.recognizer.recognize_google(audio)
-                                st.success("✅ Response recorded!")
-                                
-                                # Check if we should skip this question
-                                if st.session_state.interviewer.should_skip_question(response_text):
-                                    st.info("Generating an alternative question...")
-                                    st.session_state.current_question = st.session_state.interviewer.generate_alternative_question(
-                                        st.session_state.position,
-                                        st.session_state.interview_stage,
-                                        st.session_state.current_question,
-                                        st.session_state.responses
-                                    )
-                                    st.rerun()
-                                else:
-                                    with st.spinner("💭 Analyzing your response..."):
-                                        feedback = st.session_state.interviewer.analyze_response(
-                                            response_text,
+            with response_tab:
+                # Audio recording interface
+                if audio_enabled:
+                    if st.button("🎤 Record Response", key="record"):
+                        with st.spinner("🎙️ Recording... (Speaking now)"):
+                            with sr.Microphone() as source:
+                                try:
+                                    audio = st.session_state.interviewer.recognizer.listen(source, timeout=15)
+                                    response_text = st.session_state.interviewer.recognizer.recognize_google(audio)
+                                    st.success("✅ Response recorded!")
+
+                                    # Check if we should skip this question
+                                    if st.session_state.interviewer.should_skip_question(response_text):
+                                        st.info("Generating an alternative question...")
+                                        st.session_state.current_question = st.session_state.interviewer.generate_alternative_question(
+                                            st.session_state.position,
+                                            st.session_state.interview_stage,
                                             st.session_state.current_question,
-                                            st.session_state.position
+                                            st.session_state.responses
                                         )
-                                    
-                                    # Get enhanced authenticity analysis if enabled
-                                    authenticity = None
-                                    if st.session_state.ai_detection_enabled:
-                                        authenticity = st.session_state.interviewer.analyze_response_authenticity(response_text)
-                                    
-                                    # Save response with enhanced authenticity data if available
-                                    response_data = {
-                                        'stage': st.session_state.interview_stage,
-                                        'question': st.session_state.current_question,
-                                        'response': response_text,
-                                        'feedback': feedback,
-                                        'timestamp': datetime.now().isoformat()
-                                    }
-                                    
-                                    if authenticity:
-                                        response_data['authenticity'] = authenticity
-                                    
-                                    st.session_state.responses.append(response_data)
-                                    
-                                    st.write("### Feedback:")
-                                    st.write(feedback)
-                                    
-                                    # Display authenticity warning with confidence level if applicable
-                                    if authenticity and authenticity['warning']:
-                                        confidence = authenticity['confidence']
-                                        confidence_msg = ""
-                                        if confidence > 0.85:
-                                            confidence_msg = " (High confidence)"
-                                        elif confidence > 0.7:
-                                            confidence_msg = " (Medium confidence)"
-                                        else:
-                                            confidence_msg = " (Low confidence)"
-                                        
-                                        st.warning(f"{authenticity['warning']}{confidence_msg}")
-                                
-                            except sr.WaitTimeoutError:
-                                st.error("⚠️ No speech detected. Please try again.")
-                            except Exception as e:
-                                st.error(f"⚠️ Error: {str(e)}")
-            
-            # Text response interface
-            response_text = st.text_area("Or type your response:", key="text_response")
-            if st.button("Submit Response", key="submit"):
-                if response_text:
-                    # Check if we should skip this question
-                    if st.session_state.interviewer.should_skip_question(response_text):
-                        st.info("Generating an alternative question...")
-                        st.session_state.current_question = st.session_state.interviewer.generate_alternative_question(
-                            st.session_state.position,
-                            st.session_state.interview_stage,
-                            st.session_state.current_question,
-                            st.session_state.responses
-                        )
-                        st.rerun()
-                    else:
-                        with st.spinner("💭 Analyzing your response..."):
-                            feedback = st.session_state.interviewer.analyze_response(
-                                response_text,
+                                        st.rerun()
+                                    else:
+                                        with st.spinner("💭 Analyzing your response..."):
+                                            feedback = st.session_state.interviewer.analyze_response(
+                                                response_text,
+                                                st.session_state.current_question,
+                                                st.session_state.position
+                                            )
+
+                                        # Get enhanced authenticity analysis if enabled
+                                        authenticity = None
+                                        if st.session_state.ai_detection_enabled:
+                                            authenticity = st.session_state.interviewer.analyze_response_authenticity(response_text)
+
+                                        # Save response with enhanced authenticity data if available
+                                        response_data = {
+                                            'stage': st.session_state.interview_stage,
+                                            'question': st.session_state.current_question,
+                                            'response': response_text,
+                                            'feedback': feedback,
+                                            'timestamp': datetime.now().isoformat()
+                                        }
+
+                                        if authenticity:
+                                            response_data['authenticity'] = authenticity
+
+                                        st.session_state.responses.append(response_data)
+
+                                        st.write("### Feedback:")
+                                        st.write(feedback)
+
+                                        # Display authenticity warning with confidence level if applicable
+                                        if authenticity and authenticity['warning']:
+                                            confidence = authenticity['confidence']
+                                            confidence_msg = ""
+                                            if confidence > 0.85:
+                                                confidence_msg = " (High confidence)"
+                                            elif confidence > 0.7:
+                                                confidence_msg = " (Medium confidence)"
+                                            else:
+                                                confidence_msg = " (Low confidence)"
+
+                                            st.warning(f"{authenticity['warning']}{confidence_msg}")
+
+                                except sr.WaitTimeoutError:
+                                    st.error("⚠️ No speech detected. Please try again.")
+                                except Exception as e:
+                                    st.error(f"⚠️ Error: {str(e)}")
+
+                # Text response interface
+                response_text = st.text_area("Or type your response:", key="text_response")
+                if st.button("Submit Response", key="submit"):
+                    if response_text:
+                        # Check if we should skip this question
+                        if st.session_state.interviewer.should_skip_question(response_text):
+                            st.info("Generating an alternative question...")
+                            st.session_state.current_question = st.session_state.interviewer.generate_alternative_question(
+                                st.session_state.position,
+                                st.session_state.interview_stage,
                                 st.session_state.current_question,
-                                st.session_state.position
+                                st.session_state.responses
+                            )
+                            st.rerun()
+                        else:
+                            with st.spinner("💭 Analyzing your response..."):
+                                feedback = st.session_state.interviewer.analyze_response(
+                                    response_text,
+                                    st.session_state.current_question,
+                                    st.session_state.position
                             )
                         
                         # Get enhanced authenticity analysis if enabled
