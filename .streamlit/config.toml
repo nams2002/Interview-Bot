@@ -1,0 +1,97 @@
+[global]
+# Development mode
+developmentMode = false
+
+# Show warning when running in development mode
+showWarningOnDirectExecution = false
+
+[server]
+# Port for the server
+port = 8501
+
+# Enable CORS
+enableCORS = false
+
+# Enable XSS protection
+enableXsrfProtection = true
+
+# Max upload size (200MB for video files)
+maxUploadSize = 200
+
+# Max message size
+maxMessageSize = 200
+
+# Enable websocket compression
+enableWebsocketCompression = true
+
+# Server address
+address = "0.0.0.0"
+
+# Base URL path
+baseUrlPath = ""
+
+# Enable static file serving
+enableStaticServing = true
+
+[browser]
+# Automatically open browser
+gatherUsageStats = false
+
+# Server address for browser
+serverAddress = "localhost"
+
+# Server port for browser
+serverPort = 8501
+
+[theme]
+# Primary color
+primaryColor = "#FF6B6B"
+
+# Background color
+backgroundColor = "#FFFFFF"
+
+# Secondary background color
+secondaryBackgroundColor = "#F0F2F6"
+
+# Text color
+textColor = "#262730"
+
+# Font
+font = "sans serif"
+
+[client]
+# Show error details
+showErrorDetails = true
+
+# Toolbar mode
+toolbarMode = "minimal"
+
+[runner]
+# Magic commands
+magicEnabled = true
+
+# Install missing packages
+installTracer = false
+
+# Fix matplotlib
+fixMatplotlib = true
+
+# Post script run
+postScriptGC = true
+
+# Fast rerun
+fastReruns = true
+
+# Enforce serializable session state
+enforceSerializableSessionState = false
+
+[logger]
+# Log level
+level = "info"
+
+# Message format
+messageFormat = "%(asctime)s %(message)s"
+
+[deprecation]
+# Show deprecation warnings
+showPyplotGlobalUse = false
